@@ -12,15 +12,25 @@
     <p class="subtitle">And How to Find Out if an Object Is One</p>
     <h2>TL/DR</h2>
     <section>
-    <p>
-        TODO: Put TL/DR here.</p>
+        <p>
+            There are three definitions of what an Error is:</p>
+        <ol>
+            <li>A <em>native error</em>, especially marked by the JavaScript engine.</li>
+            <li>An <code>instanceof Error</code>.</li>
+            <li>An object that has the properties <code>message</code> and <code>name</code>; both of type
+                <code>string</code>.
+            </li>
+        </ol>
+        <p>Definition one and two are hard to check and have surprising edge-cases.
+            Use definition three instead and live with the possible false positives.</p>
+
     </section>
 
     <h2>Introduction</h2>
     <section>
         <p>
-            In the history of JavaScript people come up with different ways to check if an object is an error.
-            None of them work for all values that developers would consider errors. This page discusses them all in
+            In the history of JavaScript people came up with different ways to check if an object is an error.
+            None of them work perfectly. This page discusses them all in
             detail.
         </p>
     </section>
@@ -43,27 +53,31 @@
         <code>Object.prototype.toString.call(new Error()) // returns '[object Error]'
 Object.prototype.toString.call({}) // returns '[object Object]'</code>
         </pre>
-        <p>Objects marked as errors are <em>used to be</em> the only ones that could return <code>[object Error]</code>
-            instead of <code>[object Object]</code>. However, this is no longer true since the introduction
+        <p>Objects marked as errors are <em>used to be</em> the only ones for which <code>Object.prototype.toString.call()</code>
+            would return <code>[object Error]</code> instead of <code>[object Object]</code>.
+            However, this is no longer the case since the introduction
             of
-            <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/toStringTag">toStringTag</a>:
+            <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/toStringTag"><code>Symbol.toStringTag</code></a>:
         </p>
         <pre>
         <code>Object.prototype.toString.call({[Symbol.toStringTag]: 'Error'}) // returns '[object Error]'</code>
         </pre>
         <p>
-            This means that there can be <em>false positives</em> when checking with <code>Object.prototype.toString.call()</code>.
-            In the real world, this problem is way less important than the other problems with this approach. Firstly,
+            Therefore, there can be <em>false positives</em> when checking with
+            <code>Object.prototype.toString.call()</code>. There are two other reasons for not using this method:
+            firstly,
             using <code>Object.prototype.toString.call()</code> for type testing is discouraged
             <a href="https://tc39.es/ecma262/#sec-object.prototype.tostring">in the specification</a>. And secondly,
             many
             custom errors will return <code>[object Object]</code> when checked like this:
         </p>
         <pre>
-        <code>import {AxiosError} from "axios";
+        <code>// I'm using AxiosError as an example for an error that is not a native error.
+// I don't want to pick on Axios; this is very common.
+import {AxiosError} from "axios";
 Object.prototype.toString.call(new AxiosError()); // returns '[object Object]'</code>
         </pre>
-        <p>This means that <em>false negatives</em> will also happen quite regularly when using this method.</p>
+        <p>Thus, <em>False negatives</em> will also happen quite regularly when using this method.</p>
 
         <table>
             <thead>Summary for Object.prototype.toString.call()</thead>
@@ -85,7 +99,8 @@ Object.prototype.toString.call(new AxiosError()); // returns '[object Object]'</
     </section>
     <h2>Using Node.js <code>util.types.isNativeError()</code></h2>
     <section>
-        <p>Because of all these problems, the Node.js developers decided to expose the V8-Internal <code>IsNativeError()</code>
+        <p>Because of all these problems, the Node.js developers decided to expose the V8-Internal
+            <code>IsNativeError()</code>
             function as <a href="https://nodejs.org/api/util.html#utiltypesisnativeerrorvalue"><code>util.types.isNativeError()</code></a>.
             This gives you a reliable way to check if a value is marked as an error. However, since many custom error
             values
@@ -126,29 +141,100 @@ util.types.isNativeError(new Error()) // returns true
         </p>
 
 
-    <pre><code>(new Error()) instanceof Error; // returns true
+        <pre><code>(new Error()) instanceof Error; // returns true
 const context = vm.createContext({});
-const myError = vm.runInContext('new Error', context); // creates an error in a different realm
+const myError = vm.runInContext('new Error()', context); // creates an error in a different realm
 myError instanceof Error; // returns false
 util.types.isNativeError(myError); // returns false
     </code>
     </pre>
 
-    <table>
-        <thead>instanceof Error</thead>
-        <tr>
-            <td>False Positives</td>
-            <td>False Negatives</td>
-            <td>Isomorphic</td>
-            <td>Deprecated</td>
-        </tr>
-        <tr>
-            <td>no 👍</td>
-            <td>yes 👎</td>
-            <td>yes 👍</td>
-            <td>no 👍</td>
-        </tr>
-    </table>
+        <table>
+            <thead>instanceof Error</thead>
+            <tr>
+                <td>False Positives</td>
+                <td>False Negatives</td>
+                <td>Isomorphic</td>
+                <td>Deprecated</td>
+            </tr>
+            <tr>
+                <td>no 👍</td>
+                <td>yes 👎</td>
+                <td>yes 👍</td>
+                <td>no 👍</td>
+            </tr>
+        </table>
+    </section>
+    <h2>Using both <code>instanceof Error</code> and <code>util.types.isNativeError()</code></h2>
+    <section>
+        <p>
+            Node.js itself uses <a href="https://github.com/nodejs/node/blob/3c0131a4190a88211780dcc07dbaf84c8de97f34/lib/internal/util.js#L95">this function</a> for checking if something is an <code>Error</code> internally:
+        </p>
+        <pre><code>function isError(e) {
+  // An error could be an instance of Error while not being a native error
+  // or could be from a different realm and not be instance of Error but still
+  // be a native error.
+  return isNativeError(e) || e instanceof Error;
+}</code>
+    </pre><p>
+        While this is better than using only one of the methods, it still can produce false negatives, if the error
+        was created in another realm and is not a native error:</p>
+        <pre><code>const context = vm.createContext({});
+const myError = vm.runInContext('new AxiosError()', context); // creates an error in a different realm
+isError(myError); // returns false</code>
+    </pre>
+        <table>
+            <thead>Summary for instanceof Error and util.types.isNativeError()</thead>
+            <tr>
+                <td>False Positives</td>
+                <td>False Negatives</td>
+                <td>Isomorphic</td>
+                <td>Deprecated</td>
+            </tr>
+            <tr>
+                <td>no 👍</td>
+                <td>yes 👎</td>
+                <td>no 👎</td>
+                <td>no 👍</td>
+            </tr>
+        </table>
+
+    </section>
+    <h2>Checking for <code>message</code> and <object>name</object></h2>
+    <section>
+        <p>
+            For TypeScript, an <code>Error</code> is any object that conforms to <a
+                href="https://github.com/microsoft/TypeScript/blob/4b6fb95f040c5c81743e19a56df8fa99bf3d139f/lib/lib.es5.d.ts#L1052">this
+            interface</a>:</p>
+        <pre><code>interface Error {
+    name: string;
+    message: string;
+    stack?: string;
+}</code>
+    </pre>
+        <p>That means this function is good enough to check if something is an error by that definition:</p>
+        <pre><code>function isError(e: unknown): e is Error {
+    return typeof e === "object" &&
+        (typeof e["name"] === "string") &&
+        (typeof e["message"] === "string")
+}</code>
+    </pre>
+        <table>
+            <thead>check for name and message</thead>
+            <tr>
+                <td>False Positives</td>
+                <td>False Negatives</td>
+                <td>Isomorphic</td>
+                <td>Deprecated</td>
+            </tr>
+            <tr>
+                <td>yes 👎</td>
+                <td>no 👍</td>
+                <td>yes 👍</td>
+                <td>no 👍</td>
+            </tr>
+        </table>
+
     </section>
 </article>
 
