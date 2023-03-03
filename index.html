@@ -11,10 +11,10 @@
     <h1>WTF Is a JavaScript Error?</h1>
     <p class="subtitle">And How to Find Out if an Object Is One</p>
     <h2>TL/DR</h2>
-    <summary>
+    <section>
     <p>
         TODO: Put TL/DR here.</p>
-    </summary>
+    </section>
 
     <h2>Introduction</h2>
     <section>
@@ -122,9 +122,9 @@ util.types.isNativeError(new Error()) // returns true
             <span class="sidenote">A realm is a JavaScript execution context which has its own global environment.
                 If an error comes from another realm, its prototype points to the <code>Error</code> prototype
                 of the realm it was created in. Thus, <code>instanceof Error</code> will return <code>false</code>.
-            </span>
+            </span>.
         </p>
-    </section>
+
 
     <pre><code>(new Error()) instanceof Error; // returns true
 const context = vm.createContext({});
@@ -132,7 +132,24 @@ const myError = vm.runInContext('new Error', context); // creates an error in a 
 myError instanceof Error; // returns false
 util.types.isNativeError(myError); // returns false
     </code>
-    </pre></pre>
+    </pre>
+
+    <table>
+        <thead>instanceof Error</thead>
+        <tr>
+            <td>False Positives</td>
+            <td>False Negatives</td>
+            <td>Isomorphic</td>
+            <td>Deprecated</td>
+        </tr>
+        <tr>
+            <td>no 👍</td>
+            <td>yes 👎</td>
+            <td>yes 👍</td>
+            <td>no 👍</td>
+        </tr>
+    </table>
+    </section>
 </article>
 
 </body>
