@@ -17,7 +17,7 @@
 <body>
 <article>
     <h1>JavaScript Errors</h1>
-    <p class="subtitle">How to detect them and how to create your own.</p>
+    <p class="subtitle">How to detect them and how to create custom ones.</p>
     <h2>TL/DR</h2>
     <section>
         <p>Checking for errors is unreliable and full of edge-cases. A modern,
@@ -31,7 +31,12 @@
     object?.constructor?.name === 'DOMException'
   )
 }</code></pre>
-        <p>If you write a custom error, use <code>class</code> syntax and <code>extend</code>:</p>
+        <p>Many custom error classes in the JavaScript ecosystem are hard to detect because of a mixture of
+            <a href="https://en.wikipedia.org/wiki/Cargo_cult_programming">cargo cult programming</a> and a preference
+            for short stack traces over easy detectability.
+            </p>
+            <p>
+            If you write a custom error, use <code>class</code> syntax and <code>extend</code>:</p>
         <pre><code>class MyError extends Error {}</code></pre>
 
     </section>
@@ -47,7 +52,7 @@
     <section>
         <p>
             The <a href="https://tc39.es/ecma262/#sec-error-objects">JavasScript specification</a> defines a number
-            of “Native Errors” of which <code>Error</code> is the most generic.
+            of “Native Errors” which are all <code>instanceof Error</code>.
             According to the specification, these errors are marked in a way that is not accessible from JavasScript
             itself
             <label for="sn-internal-slot" class="margin-toggle sidenote-number"></label>
@@ -55,8 +60,8 @@
             <span class="sidenote">An <code>[[ErrorData]]</code> <a
                     href="https://tc39.es/ecma262/#sec-object-internal-methods-and-internal-slots">internal slot</a> is used for this.</span>.
             However, in practice they can be <a href="#is-native-error">detected reliably</a> in Node.js and <a href="#to-string">unreliably in the browser</a>.
-            Before the introduction of classes, creating subclasses of <code>Error</code> that are also marked as native errors was
-            hard. Therefore, <em>a good chunk of the errors out there are not native</em>.
+
+
         </p>
     </section>
     <h3><code>DOMException</code>s</h3>
@@ -74,7 +79,7 @@
     <h3>Instances of <code>Error</code></h3>
     <section>
         <p>
-            There are a lot of custom errors that are not native but still instances of <code>Error</code>.
+            There are a lot of custom errors defined in popular libraries that are not native but still instances of <code>Error</code>.
             Why this is the case is explained in the section on defining custom errors. // todo: link
         </p>
     </section>
@@ -87,7 +92,7 @@
             <span class="sidenote">A realm is a JavaScript execution context which has its own global environment.
                 If an error comes from another realm, its prototype points to the <code>Error</code> prototype
                 of the realm it was created in. Thus, <code>instanceof Error</code> will return <code>false</code>.
-            </span>, it is no longer instance of anything in the current realm. However, the name of the constructor is
+            </span>, it is not instance of anything in the current realm. However, the name of the constructor is
             still <code>"Error"</code>.
         </p>
     </section>
@@ -110,7 +115,7 @@
 
     <h2>Part Two: How to Check for Errors</h2>
 
-    <h2>Detecting Native Errors</h2>
+    <h3>Detecting Native Errors</h3>
     <section id="to-string">
         <p>
             Clever people came up with a way to check for native errors by using the <code>Object.prototype.toString()</code>
@@ -126,11 +131,12 @@ Object.prototype.toString.call({}) // returns '[object Object]'</code>
             <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/toStringTag"><code>Symbol.toStringTag</code></a>:
         </p>
         <pre>
-        <code>Object.prototype.toString.call({[Symbol.toStringTag]: 'Error'}) // returns '[object Error]'</code>
+        <code>const fakeError = {[Symbol.toStringTag]: 'Error'};
+Object.prototype.toString.call(fakeError) // returns '[object Error]'</code>
         </pre>
         <p>
             Therefore, there can be <em>false positives</em> when checking with
-            <code>Object.prototype.toString.call()</code>. There are two other reasons for not using this method:
+            <code>Object.prototype.toString.call()</code>.</p> <p>There are two other reasons for not using this method:
             firstly,
             using <code>Object.prototype.toString.call()</code> for type testing is discouraged
             <a href="https://tc39.es/ecma262/#sec-object.prototype.tostring">in the specification</a>. And secondly,
@@ -203,9 +209,9 @@ util.types.isNativeError(new Error()) // returns true
             </tr>
         </table>
         <p><strong>I recommend not checking if an error is native. There are too many false negatives and cross-realm
-            checking can be done differently.</strong></p>
+            checking can be done using constructor names.</strong></p>
     </section>
-    <h2>Detecting <code>Error</code> instances</h2>
+    <h3>Detecting <code>Error</code> instances</h3>
     <section>
         <p> Another way of checking if something is an error is using the <code>instanceof</code> operator.
             It is quite common for errors to be <code>instanceof Error</code> but not native, so this will catch
@@ -271,7 +277,7 @@ myError.constructor.name === "Error"; // returns true
 
     </section>
 
-    <h2 id="massage-and-name">Checking for <code>message</code> and <object>name</object></h2>
+    <h3 id="massage-and-name">Checking for <code>message</code> and <object>name</object></h3>
     <section>
         <p>If TypeScripts error definition is good enough for you, this type guard will do the job:</p>
         <pre><code>function isError(e: unknown): e is Error {
@@ -279,9 +285,9 @@ myError.constructor.name === "Error"; // returns true
     (typeof e["name"] === "string") &&
     (typeof e["message"] === "string")
 }</code>
-        </pre>
-        This is a pretty loose definition however and one can easily imagine real-world examples for objects with these
-        properties that are not errors.
+        </pre><p>
+        This is a pretty loose definition however, and one can easily imagine real-world examples for objects with these
+        properties that are not errors.</p>
         <table>
             <caption>Summary for checking for <code>message</code> and <code>name</code></caption>
             <thead>
@@ -347,7 +353,7 @@ isError(myError); // returns false</code>
 }</code></pre>
 
 
-    <h2>Part Two: How to Define Custom Errors</h2>
+    <h2>Part Three: How to Define Custom Errors</h2>
 
 </article>
 
