@@ -5,38 +5,45 @@
     <title>JS Error WTF</title>
     <link rel="stylesheet" href="tufte.css"/>
     <link rel="stylesheet" href="rainbow.min.css">
+    <style>
+        table {
+            font-size: 1.4rem;
+        }
+        .check-row {
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
 <article>
-    <h1>WTF Is a JavaScript Error?</h1>
-    <p class="subtitle">And How to Find Out if an Object Is One</p>
+    <h1>JavaScript Errors</h1>
+    <p class="subtitle">How to detect them and how to create your own.</p>
     <h2>TL/DR</h2>
     <section>
-        <p>
-            There are three definitions of what an Error is:</p>
-        <ol>
-            <li>A <em>native error</em>, especially marked by the JavaScript engine.</li>
-            <li>An <code>instanceof Error</code>.</li>
-            <li>An object that has the properties <code>message</code> and <code>name</code>; both of type
-                <code>string</code>.
-            </li>
-        </ol>
-        <p>Definition one and two are hard to check and have surprising edge-cases.
-            Use definition three instead and live with the possible false positives.</p>
+        <p>Checking for errors is unreliable and full of edge-cases. A modern,
+            <a href="https://en.wikipedia.org/wiki/Isomorphic_JavaScript">isomorphic</a> way to do it is the following<label for="sn-undici" class="margin-toggle sidenote-number"></label>
+            <input type="checkbox" id="sn-undici" class="margin-toggle"/>
+            <span class="sidenote">This code is taken from <a href="https://github.com/nodejs/undici/blob/4885b11dd60b4d1a785c4e5a519ad87920549d1c/lib/fetch/util.js#L75">undici</a>.</span>
+            :</p>
+        <pre><code>function isError (object) {
+  return object instanceof Error || (
+    object?.constructor?.name === 'Error' ||
+    object?.constructor?.name === 'DOMException'
+  )
+}</code></pre>
+        <p>If you write a custom error, use <code>class</code> syntax and <code>extend</code>:</p>
+        <pre><code>class MyError extends Error {}</code></pre>
 
     </section>
 
-    <h2>Introduction</h2>
+    <h2>Part One: WTF is an error anyway?</h2>
     <section>
         <p>
-            In the history of JavaScript people came up with different ways to check if an object is an error.
-            None of them work perfectly. This page discusses them all in
-            detail.
+            In JavaScript different things can be meant by “error”. This part discusses the different kinds of
+            errors.
         </p>
     </section>
-
-
-    <h2>Using <code>Object.prototype.toString.call()</code></h2>
+    <h3>Native Errors</h3>
     <section>
         <p>
             The <a href="https://tc39.es/ecma262/#sec-error-objects">JavasScript specification</a> defines a number
@@ -47,7 +54,66 @@
             <input type="checkbox" id="sn-internal-slot" class="margin-toggle"/>
             <span class="sidenote">An <code>[[ErrorData]]</code> <a
                     href="https://tc39.es/ecma262/#sec-object-internal-methods-and-internal-slots">internal slot</a> is used for this.</span>.
-            Clever people came up with a way to check for the presence of this mark by using the <code>Object.prototype.toString()</code>
+            However, in practice they can be <a href="#is-native-error">detected reliably</a> in Node.js and <a href="#to-string">unreliably in the browser</a>.
+            Before the introduction of classes, creating subclasses of <code>Error</code> that are also marked as native errors was
+            hard. Therefore, <em>a good chunk of the errors out there are not native</em>.
+        </p>
+    </section>
+    <h3><code>DOMException</code>s</h3>
+    <section>
+        <p>
+            <code>DOMException</code>s<label for="sn-dom-exception" class="margin-toggle sidenote-number"></label>
+            <input type="checkbox" id="sn-dom-exception" class="margin-toggle"/>
+            <span class="sidenote"><code>DOMException</code>s don't fit into the JavaScript naming scheme for errors. In JavaScript an exception is what happens if an error is thrown.</span> are errors that are thrown when an error happens in one of the web APIs. It is defined
+            in the <a href="https://www.w3.org/TR/DOM-Level-3-Core/core.html#ID-17189187">DOM specification</a>.
+            DOMExceptions are no native errors and are not <code>instanceof Error</code>. DOMException does exist both
+            in the browser and in Node.js.
+        </p>
+    </section>
+
+    <h3>Instances of <code>Error</code></h3>
+    <section>
+        <p>
+            There are a lot of custom errors that are not native but still instances of <code>Error</code>.
+            Why this is the case is explained in the section on defining custom errors. // todo: link
+        </p>
+    </section>
+
+    <h3>Objects with a constructor named “Error”</h3>
+    <section>
+        <p>
+            If an object crosses a <a href="https://tc39.es/ecma262/#realm">realm boundary</a><label for="sn-realms" class="margin-toggle sidenote-number"></label>
+            <input type="checkbox" id="sn-realms" class="margin-toggle"/>
+            <span class="sidenote">A realm is a JavaScript execution context which has its own global environment.
+                If an error comes from another realm, its prototype points to the <code>Error</code> prototype
+                of the realm it was created in. Thus, <code>instanceof Error</code> will return <code>false</code>.
+            </span>, it is no longer instance of anything in the current realm. However, the name of the constructor is
+            still <code>"Error"</code>.
+        </p>
+    </section>
+
+    <h3>Objects with the <code>string</code> properties <code>name</code> and <code>message</code></h3>
+    <section>
+        <p>
+            For TypeScript, an <code>Error</code> is any object that conforms to <a
+                href="https://github.com/microsoft/TypeScript/blob/4b6fb95f040c5c81743e19a56df8fa99bf3d139f/lib/lib.es5.d.ts#L1052">this
+            interface</a>:</p>
+        <pre><code>interface Error {
+  name: string;
+  message: string;
+  stack?: string;
+}</code>
+    </pre><p>
+        The optional <code>stack</code> property is not defined in the standard but present in every modern JavaScript engine.
+        </p>
+    </section>
+
+    <h2>Part Two: How to Check for Errors</h2>
+
+    <h2>Detecting Native Errors</h2>
+    <section id="to-string">
+        <p>
+            Clever people came up with a way to check for native errors by using the <code>Object.prototype.toString()</code>
             method:</p>
         <pre>
         <code>Object.prototype.toString.call(new Error()) // returns '[object Error]'
@@ -69,36 +135,41 @@ Object.prototype.toString.call({}) // returns '[object Object]'</code>
             using <code>Object.prototype.toString.call()</code> for type testing is discouraged
             <a href="https://tc39.es/ecma262/#sec-object.prototype.tostring">in the specification</a>. And secondly,
             many
-            custom errors will return <code>[object Object]</code> when checked like this:
+            custom errors and <code>DOMException</code> will not return <code>[object Error]</code> when checked like this:
         </p>
         <pre>
         <code>// I'm using AxiosError as an example for an error that is not a native error.
 // I don't want to pick on Axios; this is very common.
 import {AxiosError} from "axios";
-Object.prototype.toString.call(new AxiosError()); // returns '[object Object]'</code>
+Object.prototype.toString.call(new AxiosError()); // returns '[object Object]'
+Object.prototype.toString.call(new DOMException()); // returns '[object DOMException]'
+        </code>
         </pre>
         <p>Thus, <em>False negatives</em> will also happen quite regularly when using this method.</p>
-
         <table>
-            <thead>Summary for Object.prototype.toString.call()</thead>
+            <caption>Summary for <code>Object.prototype.toString.call()</code></caption>
+            <thead>
             <tr>
-                <td>False Positives</td>
-                <td>False Negatives</td>
-                <td>Isomorphic</td>
-                <td>Deprecated</td>
+                <td>No False Positives</td>
+                <td>No False Negatives</td>
+                <td>Is Isomorphic</td>
+                <td>Not Deprecated</td>
             </tr>
-            <tr>
-                <td>yes 👎</td>
-                <td>yes 👎</td>
-                <td>yes 👍</td>
-                <td>yes 👎</td>
+            </thead>
+            <tbody>
+            <tr class="check-row">
+                <td>⤬</td>
+                <td>⤬</td>
+                <td>✓</td>
+                <td>⤬</td>
             </tr>
+            </tbody>
+
         </table>
 
-
     </section>
-    <h2>Using Node.js <code>util.types.isNativeError()</code></h2>
-    <section>
+
+    <section id="is-native-error">
         <p>Because of all these problems, the Node.js developers decided to expose the V8-Internal
             <code>IsNativeError()</code>
             function as <a href="https://nodejs.org/api/util.html#utiltypesisnativeerrorvalue"><code>util.types.isNativeError()</code></a>.
@@ -112,62 +183,130 @@ util.types.isNativeError({[Symbol.toStringTag]: 'Error'}) // returns false
 util.types.isNativeError(new Error()) // returns true
         </code>
         </pre>
+
         <table>
-            <thead>util.types.isNativeError()</thead>
+            <caption>Summary for <code>util.types.isNativeError()</code></caption>
+            <thead>
             <tr>
-                <td>False Positives</td>
-                <td>False Negatives</td>
-                <td>Isomorphic</td>
-                <td>Deprecated</td>
+                <td>No False Positives</td>
+                <td>No False Negatives</td>
+                <td>Is Isomorphic</td>
+                <td>Not Deprecated</td>
             </tr>
-            <tr>
-                <td>no 👍</td>
-                <td>yes 👎</td>
-                <td>no 👎</td>
-                <td>no 👍</td>
+            </thead>
+
+            <tr class="check-row">
+                <td>✓</td>
+                <td>⤬</td>
+                <td>⤬</td>
+                <td>✓</td>
             </tr>
         </table>
+        <p><strong>I recommend not checking if an error is native. There are too many false negatives and cross-realm
+            checking can be done differently.</strong></p>
     </section>
-    <h2>Using <code>instanceof Error</code></h2>
+    <h2>Detecting <code>Error</code> instances</h2>
     <section>
-        <p> Another way of checking is something is an error is using the <code>instanceof</code> operator.
-            However, this does not work across <a href="https://tc39.es/ecma262/#realm">realms</a>
-            <label for="sn-realms" class="margin-toggle sidenote-number"></label>
-            <input type="checkbox" id="sn-realms" class="margin-toggle"/>
-            <span class="sidenote">A realm is a JavaScript execution context which has its own global environment.
-                If an error comes from another realm, its prototype points to the <code>Error</code> prototype
-                of the realm it was created in. Thus, <code>instanceof Error</code> will return <code>false</code>.
-            </span>.
+        <p> Another way of checking if something is an error is using the <code>instanceof</code> operator.
+            It is quite common for errors to be <code>instanceof Error</code> but not native, so this will catch
+            more errors than the methods described above.
+            However, as already mentioned, this does not work across realms:
         </p>
-
-
         <pre><code>(new Error()) instanceof Error; // returns true
 const context = vm.createContext({});
 const myError = vm.runInContext('new Error()', context); // creates an error in a different realm
 myError instanceof Error; // returns false
-util.types.isNativeError(myError); // returns false
+util.types.isNativeError(myError); // returns true
     </code>
     </pre>
-
         <table>
-            <thead>instanceof Error</thead>
+            <caption>Summary for <code>instanceof error</code></caption>
+            <thead>
             <tr>
-                <td>False Positives</td>
-                <td>False Negatives</td>
-                <td>Isomorphic</td>
-                <td>Deprecated</td>
+                <td>No False Positives</td>
+                <td>No False Negatives</td>
+                <td>Is Isomorphic</td>
+                <td>Not Deprecated</td>
             </tr>
-            <tr>
-                <td>no 👍</td>
-                <td>yes 👎</td>
-                <td>yes 👍</td>
-                <td>no 👍</td>
+            </thead>
+
+            <tr class="check-row">
+                <td>✓</td>
+                <td>⤬</td>
+                <td>✓</td>
+                <td>✓</td>
             </tr>
         </table>
     </section>
-    <h2>Using both <code>instanceof Error</code> and <code>util.types.isNativeError()</code></h2>
+    <section>
+        <p>To detect errors from other realms we can check the constructor name. This may lead to false positives though:</p>
+        <pre><code>(new Error()) instanceof Error; // returns true
+const context = vm.createContext({});
+const myError = vm.runInContext('new Error()', context); // creates an error in a different realm
+myError.constructor.name === "Error"; // returns true
+{constructor: {name: "Error"}}.constructor.name === "Error"; // returns true
+    </code>
+        </pre>
+        <p>
+        However, the example for the false positive is contrived and if people really want to fake an error, they probably have reasons for it.
+        </p>
+        <table>
+            <caption>Summary for <code>X.constructor.name === "Error"</code></caption>
+            <thead>
+            <tr>
+                <td>No False Positives</td>
+                <td>No False Negatives</td>
+                <td>Is Isomorphic</td>
+                <td>Not Deprecated</td>
+            </tr>
+            </thead>
+
+            <tr class="check-row">
+                <td>⤬</td>
+                <td>✓</td>
+                <td>✓</td>
+                <td>✓</td>
+            </tr>
+        </table>
+
+    </section>
+
+    <h2 id="massage-and-name">Checking for <code>message</code> and <object>name</object></h2>
+    <section>
+        <p>If TypeScripts error definition is good enough for you, this type guard will do the job:</p>
+        <pre><code>function isError(e: unknown): e is Error {
+  return typeof e === "object" &&
+    (typeof e["name"] === "string") &&
+    (typeof e["message"] === "string")
+}</code>
+        </pre>
+        This is a pretty loose definition however and one can easily imagine real-world examples for objects with these
+        properties that are not errors.
+        <table>
+            <caption>Summary for checking for <code>message</code> and <code>name</code></caption>
+            <thead>
+            <tr>
+                <td>No False Positives</td>
+                <td>No False Negatives</td>
+                <td>Is Isomorphic</td>
+                <td>Not Deprecated</td>
+            </tr>
+            </thead>
+
+            <tr class="check-row">
+                <td>⤬</td>
+                <td>✓</td>
+                <td>✓</td>
+                <td>✓</td>
+            </tr>
+        </table>
+
+    </section>
+
+    <h2>Using Combinations of several checks</h2>
     <section>
         <p>
+            <em>Using combinations of the methods described above is generally the way to go.</em>
             Node.js itself uses <a href="https://github.com/nodejs/node/blob/3c0131a4190a88211780dcc07dbaf84c8de97f34/lib/internal/util.js#L95">this function</a> for checking if something is an <code>Error</code> internally:
         </p>
         <pre><code>function isError(e) {
@@ -183,59 +322,33 @@ util.types.isNativeError(myError); // returns false
 const myError = vm.runInContext('new AxiosError()', context); // creates an error in a different realm
 isError(myError); // returns false</code>
     </pre>
-        <table>
-            <thead>Summary for instanceof Error and util.types.isNativeError()</thead>
-            <tr>
-                <td>False Positives</td>
-                <td>False Negatives</td>
-                <td>Isomorphic</td>
-                <td>Deprecated</td>
-            </tr>
-            <tr>
-                <td>no 👍</td>
-                <td>yes 👎</td>
-                <td>no 👎</td>
-                <td>no 👍</td>
-            </tr>
-        </table>
+    </section>
+    <section>
+        <p>Node.js's deprecated <a href="https://nodejs.org/api/util.html#utiliserrorobject"><code>util.isError()</code></a> function uses a combination of <code>instanceof</code>
+            and <code>Object.prototype.toString.call()</code>. This makes it deprecated but isomorphic.</p>
+        <pre><code>function isError(e) {
+  return Object.prototype.toString.call(e) === '[object Error]' ||
+    e instanceof Error;
+}</code>
+    </pre>
 
     </section>
-    <h2>Checking for <code>message</code> and <object>name</object></h2>
     <section>
         <p>
-            For TypeScript, an <code>Error</code> is any object that conforms to <a
-                href="https://github.com/microsoft/TypeScript/blob/4b6fb95f040c5c81743e19a56df8fa99bf3d139f/lib/lib.es5.d.ts#L1052">this
-            interface</a>:</p>
-        <pre><code>interface Error {
-    name: string;
-    message: string;
-    stack?: string;
-}</code>
-    </pre>
-        <p>That means this function is good enough to check if something is an error by that definition:</p>
-        <pre><code>function isError(e: unknown): e is Error {
-    return typeof e === "object" &&
-        (typeof e["name"] === "string") &&
-        (typeof e["message"] === "string")
-}</code>
-    </pre>
-        <table>
-            <thead>check for name and message</thead>
-            <tr>
-                <td>False Positives</td>
-                <td>False Negatives</td>
-                <td>Isomorphic</td>
-                <td>Deprecated</td>
-            </tr>
-            <tr>
-                <td>yes 👎</td>
-                <td>no 👍</td>
-                <td>yes 👍</td>
-                <td>no 👍</td>
-            </tr>
-        </table>
-
+        And finally, as already described above, undici uses <code>instanceof</code> and constructor names. This makes
+        it work across realms and does not use Node.js-only functions. It will also produce less false positives than
+        just checking for the <code>name</code> and <code>message</code> properties:</p>
     </section>
+    <pre><code>function isError (object) {
+  return object instanceof Error || (
+    object?.constructor?.name === 'Error' ||
+    object?.constructor?.name === 'DOMException'
+  )
+}</code></pre>
+
+
+    <h2>Part Two: How to Define Custom Errors</h2>
+
 </article>
 
 </body>
